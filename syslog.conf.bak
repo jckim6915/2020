@@ -1,0 +1,49 @@
+#
+input {
+  syslog {
+    type => syslog
+    port => 10514
+  }
+}
+
+filter {
+  if [type == "syslog" ] {
+    grok {
+      match => { "message" => "%{SYSLOGTIMESTAMP:syslog_timestamp} %{SYSLOGHOST:syslog_hostname} %{DATA:syslog_program}(?:\[%{POSINT:syslog_pid}\])?: %{GREEDYDATA:syslog_message}" }
+    }
+    date {
+      match => [ "syslog_timestamp", "MMM d HH:mm:ss", "MMM dd HH:mm:ss" ]
+    }
+  }
+
+  # hostname 을 host와 동일한 데이터로 필드 생성
+  # host 필드는 ip 기록되어 있음
+  mutate {
+  #    add_field => { "hostname" => "%{host}" }
+      add_field => { "hostname" => "%{logsource}" }
+    #  copy => { "hostname" => "%{ip}" }
+
+  }
+
+  # hostname(ip) 필드의 데이터를 호스트네임으로 변경
+  #dns {
+  #  action => "replace"
+  #  reverse => [ "hostname" ]
+  #}
+
+  # hostname(호스트네임) 데이터를 도메인을 잘라내고 서버명만 저장
+  grok {
+    match => { "hostname" => "%{HOSTNAME:hostname}.tmonc.net" }
+    overwrite => [ "hostname" ]
+  }
+}
+
+output {
+stdout { codec => rubydebug }
+  if [type] == "syslog" {
+    elasticsearch {
+      hosts => ["logelk1.tmonc.net:9200", "logelk2.tmonc.net:9200"]
+      index => "%{type}-%{+YYYY.MM}"
+    }
+  }
+}
